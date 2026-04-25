@@ -24,4 +24,4 @@ jobs:
           # within a single sqlite connection. There is a brief window where
           # queries against in-flight tables will fail; tighten with a
           # lockfile or blue/green if traffic warrants it.
-          flyctl ssh console -C "python /app/ingest.py" --app efast-broker-search
+          flyctl ssh console -C "sh -c 'python -u /app/ingest.py && touch /data/.ingest-complete'" --app efast-broker-search

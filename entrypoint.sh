@@ -8,10 +8,13 @@ if [ ! -e /app/data ]; then
     ln -s /data /app/data
 fi
 
-# First-boot ingest: if no DB on the volume yet, build it.
-if [ ! -f /data/efast.db ]; then
-    echo "[entrypoint] No DB found at /data/efast.db — running ingest. This takes several minutes."
-    cd /app && python ingest.py
+# First-boot (or post-interrupted-ingest) bootstrap. The marker file is
+# written only after ingest completes; checking for the DB file alone is
+# unsafe because schema-only DBs exist briefly during ingest.
+if [ ! -f /data/.ingest-complete ]; then
+    echo "[entrypoint] No completed ingest marker — running ingest. This takes several minutes."
+    rm -f /data/efast.db /data/efast.db-shm /data/efast.db-wal
+    cd /app && python -u ingest.py && touch /data/.ingest-complete
 fi
 
 exec "$@"

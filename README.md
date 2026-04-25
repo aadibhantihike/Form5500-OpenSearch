@@ -3,7 +3,7 @@
 Open search interface over U.S. Department of Labor (DOL/EBSA) public Form 5500
 filings, with broker-name normalization and Schedule A commission rollups.
 
-Live: https://efast.vercel.app
+Live: https://efast-three.vercel.app
 
 The DOL publishes every Form 5500 filing every employer-sponsored health,
 welfare, and pension plan with 100+ participants makes annually. Schedule A
@@ -37,7 +37,7 @@ Open `http://localhost:8787`.
 ```sh
 fly launch --no-deploy --copy-config       # accept the existing fly.toml
 fly volumes create efast_data --region iad --size 3
-fly secrets set EFAST_CORS_ORIGINS="https://efast.vercel.app"
+fly secrets set EFAST_CORS_ORIGINS="https://efast-three.vercel.app"
 fly deploy
 ```
 
