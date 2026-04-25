@@ -1,0 +1,11 @@
+.venv/
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.git/
+.github/
+.claude/
+*.md
+LICENSE
+vercel.json

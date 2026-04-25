@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Form 5500 Broker Search</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3"></script>
+<style>
+  :root {
+    --fg:#1a1a1a; --muted:#666; --bg:#fafafa; --card:#fff; --line:#e3e3e3;
+    --accent:#0b6e3f; --accent-soft:#e6f5ec; --hover:#f0f7f3;
+    --info-bg:#eff6ff; --info-border:#bfdbfe; --info-fg:#1e40af;
+    --pill:#eef; --pill-fg:#335;
+  }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color: var(--fg); background: var(--bg); margin: 0; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 24px; }
+  header h1 { margin: 0; font-size: 18px; display: inline-block; }
+  nav.modes { display: inline-flex; gap: 4px; margin-left: 24px; vertical-align: middle; }
+  nav.modes button { background: none; border: 1px solid transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; }
+  nav.modes button:hover { background: var(--hover); }
+  nav.modes button.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .disclaimer { background: var(--info-bg); border-left: 4px solid var(--info-border); color: var(--info-fg); padding: 10px 24px; font-size: 13px; line-height: 1.5; }
+  .disclaimer strong { color: #1e3a8a; }
+  .layout { padding: 16px 24px; max-width: 1500px; margin: 0 auto; }
+  .layout.split { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .tab { padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; }
+  .tab.active { background: var(--accent); color: white; }
+
+  input[type=text], input[type=number], select, textarea {
+    padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px;
+    font-family: inherit;
+  }
+  /* In the search rail and bulk view, inputs/selects fill their column. The toolbar
+     opts out by giving children explicit widths. */
+  .panel > input[type=text], .panel > input[type=number],
+  .filter-row input, .filter-row select, .bulk-grid textarea { width: 100%; }
+  .toolbar input, .toolbar select { width: auto; }
+  textarea { min-height: 140px; resize: vertical; }
+  label.f { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+  .filter-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }
+
+  button.btn { background: var(--accent); color: white; border: 0; padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  button.btn:hover { filter: brightness(1.05); }
+  button.btn.outline { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.btn.small { padding: 4px 10px; font-size: 12px; }
+
+  .results { margin-top: 10px; max-height: 70vh; overflow-y: auto; }
+  .result-row { padding: 9px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .result-row:hover { background: var(--hover); border-color: var(--line); }
+  .result-row.active { background: var(--hover); border-color: var(--accent); }
+  .result-name { font-weight: 600; }
+  .result-meta { color: var(--muted); font-size: 12px; }
+
+  .detail h2 { margin: 0 0 4px; font-size: 17px; }
+  .detail h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .filing { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .filing-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .filing-title { font-weight: 600; }
+  .pill { display: inline-block; background: var(--pill); color: var(--pill-fg); padding: 2px 8px; border-radius: 99px; font-size: 11px; margin-right: 4px; }
+  .pill.health { background: var(--accent-soft); color: var(--accent); }
+  table.brokers { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  table.brokers th, table.brokers td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.brokers th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rollup { background: var(--hover); border-radius: 6px; padding: 12px; margin-bottom: 16px; }
+  .placeholder { color: var(--muted); padding: 40px 20px; text-align: center; }
+  .sch-a-line { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; font-size: 13px; }
+  .carrier { font-weight: 600; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .header-actions { float: right; }
+  details > summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+
+  .map-wrap { position: relative; }
+  svg.map { width: 100%; height: 580px; background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+  svg.map .state { fill: #f4f4f4; stroke: #fff; stroke-width: 0.5; cursor: pointer; }
+  svg.map .state:hover { stroke: #333; stroke-width: 1; }
+  svg.map .office-dot { fill: var(--accent); fill-opacity: 0.5; stroke: white; stroke-width: 0.5; pointer-events: all; }
+  svg.map .client-dot { fill: #2563eb; fill-opacity: 0.55; stroke: white; stroke-width: 0.5; cursor: pointer; }
+  svg.map .client-dot:hover { fill: #1e40af; }
+  .map-tooltip {
+    position: absolute; background: rgba(20,20,20,0.95); color: white;
+    padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none;
+    transform: translate(-50%, -110%); white-space: pre-line; max-width: 240px;
+  }
+  .legend { display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend-grad { display: flex; align-items: center; gap: 6px; }
+  .legend-grad .swatch { width: 80px; height: 12px; background: linear-gradient(to right, #f4f4f4, #0b6e3f); border: 1px solid var(--line); }
+
+  .bulk-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.data th, table.data td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+  table.data th { background: var(--hover); color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  table.data tr:hover { background: var(--hover); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 99px;
+    font-size: 11px; background: #fef3c7; color: #92400e; font-weight: 500;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Form 5500 Broker Search</h1>
+  <nav class="modes">
+    <button id="m-search" class="active">Search</button>
+    <button id="m-switchers">Broker switchers</button>
+    <button id="m-bulk">Bulk lookup</button>
+    <button id="m-clients">Big clients map</button>
+  </nav>
+</header>
+
+<div id="disclaimer" class="disclaimer"></div>
+
+<!-- SEARCH MODE -->
+<div id="view-search" class="layout split">
+  <div class="panel">
+    <div class="tabs">
+      <div id="tab-co" class="tab active">Companies</div>
+      <div id="tab-br" class="tab">Brokers</div>
+    </div>
+    <input id="q" type="text" placeholder="Search company name (e.g. Starbucks)…" autofocus />
+    <div id="filter-bar" class="filter-row"></div>
+    <div id="results" class="results"></div>
+  </div>
+  <div id="detail" class="panel detail">
+    <div class="placeholder">Search and select a result to see brokers of record.</div>
+  </div>
+</div>
+
+<!-- SWITCHERS MODE -->
+<div id="view-switchers" class="layout" style="display:none">
+  <div class="panel">
+    <div class="toolbar">
+      <strong>Sponsors that changed primary broker between plan years</strong>
+      <span class="badge">High-intent prospects</span>
+      <span style="flex:1"></span>
+      <label class="f" style="display:inline">State</label>
+      <input id="sw-state" type="text" maxlength="2" style="width:60px;text-transform:uppercase" placeholder="CA" />
+      <label class="f" style="display:inline">Min participants</label>
+      <input id="sw-min" type="number" style="width:100px" placeholder="1000" />
+      <button class="btn small" onclick="loadSwitchers()">Apply</button>
+      <button class="btn small outline" onclick="exportSwitchers()">⬇ CSV</button>
+    </div>
+    <div id="switchers-out"><div class="placeholder">Loading…</div></div>
+  </div>
+</div>
+
+<!-- BULK LOOKUP MODE -->
+<div id="view-bulk" class="layout" style="display:none">
+  <div class="panel">
+    <div class="bulk-grid">
+      <div>
+        <h3>Bulk lookup</h3>
+        <p class="result-meta" style="margin-top:0">Paste a list of company names or 9-digit EINs, one per line. Up to 1000 entries. Returns the latest plan year's primary broker (largest commission) for each.</p>
+        <textarea id="bulk-input" placeholder="STARBUCKS CORPORATION&#10;911325671&#10;Walmart&#10;Tesla&#10;Apple Inc"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn" onclick="runBulk()">Look up</button>
+          <button class="btn outline" id="bulk-csv" onclick="exportBulk()" disabled>⬇ Export CSV</button>
+        </div>
+      </div>
+      <div>
+        <div id="bulk-out"><div class="placeholder">Results will appear here.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIENTS MAP MODE -->
+<div id="view-clients" class="layout" style="display:none">
+  <div class="panel">
+    <div class="toolbar">
+      <strong>Large clients map</strong>
+      <span class="result-meta">Sponsors with the most active participants. Click a dot for details.</span>
+      <span style="flex:1"></span>
+      <label class="f" style="display:inline">Min active participants</label>
+      <input id="cm-min" type="number" value="10000" style="width:120px" />
+      <label class="f" style="display:inline">Plan year</label>
+      <select id="cm-year">
+        <option value="">any</option>
+        <option value="2024">2024</option>
+        <option value="2025">2025</option>
+      </select>
+      <button class="btn small" onclick="loadClientsMap()">Apply</button>
+    </div>
+    <div class="map-wrap">
+      <svg id="clients-map" class="map" viewBox="0 0 960 600"></svg>
+      <div id="clients-tooltip" class="map-tooltip" style="display:none"></div>
+    </div>
+    <div id="clients-info" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- BROKER MAP MODAL (overlay) -->
+<div id="broker-map-modal" style="display:none; position:fixed; inset:0; background:rgba(20,20,20,0.55); z-index:50; align-items:center; justify-content:center">
+  <div style="background:white; width:min(95vw,1100px); max-height:90vh; overflow:auto; border-radius:10px; padding:16px; position:relative">
+    <button class="btn outline small" style="position:absolute;top:12px;right:12px" onclick="closeBrokerMap()">✕ Close</button>
+    <h3 id="bmm-title" style="margin:0 0 4px"></h3>
+    <div id="bmm-summary" class="result-meta" style="margin-bottom:10px"></div>
+    <div class="map-wrap">
+      <svg id="broker-map" class="map" viewBox="0 0 960 600"></svg>
+      <div id="broker-tooltip" class="map-tooltip" style="display:none"></div>
+    </div>
+    <div class="legend">
+      <div class="legend-grad">
+        <span>0 clients</span>
+        <span class="swatch"></span>
+        <span id="bmm-max">max</span>
+      </div>
+      <div>● Office (size = # of contracts written from this zip)</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// State
+// ============================================================================
+let searchMode = "company";   // 'company' or 'broker'
+let appMode = "search";       // 'search' | 'switchers' | 'bulk' | 'clients'
+let lastQuery = "";
+let bulkLastResults = [];
+let usTopo = null;            // cached US topojson
+let stateNameToAbbr = {        // FIPS state code → USPS abbreviation, used for choropleth keying
+  "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
+  "11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA",
+  "20":"KS","21":"KY","22":"LA","23":"ME","24":"MD","25":"MA","26":"MI","27":"MN",
+  "28":"MS","29":"MO","30":"MT","31":"NE","32":"NV","33":"NH","34":"NJ","35":"NM",
+  "36":"NY","37":"NC","38":"ND","39":"OH","40":"OK","41":"OR","42":"PA","44":"RI",
+  "45":"SC","46":"SD","47":"TN","48":"TX","49":"UT","50":"VT","51":"VA","53":"WA",
+  "54":"WV","55":"WI","56":"WY","60":"AS","66":"GU","69":"MP","72":"PR","78":"VI"
+};
+
+// ============================================================================
+// Helpers
+// ============================================================================
+const fmt = n => n == null ? "—" : "$" + Math.round(n).toLocaleString();
+const fmtInt = n => n == null ? "—" : Math.round(n).toLocaleString();
+const escapeHtml = s => s == null ? "" : String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fullAddress = b => [b.broker_address1, [b.broker_city, b.broker_state].filter(Boolean).join(", "), b.broker_zip].filter(Boolean).join(" · ");
+
+async function loadUsTopo() {
+  if (usTopo) return usTopo;
+  const r = await fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json");
+  usTopo = await r.json();
+  return usTopo;
+}
+
+// ============================================================================
+// Mode switching
+// ============================================================================
+function setAppMode(m) {
+  appMode = m;
+  for (const id of ["search","switchers","bulk","clients"]) {
+    document.getElementById("view-" + id).style.display = (id === m) ? "" : "none";
+    document.getElementById("m-" + id).classList.toggle("active", id === m);
+  }
+  if (m === "switchers") loadSwitchers();
+  if (m === "clients") loadClientsMap();
+}
+document.getElementById("m-search").onclick    = () => setAppMode("search");
+document.getElementById("m-switchers").onclick = () => setAppMode("switchers");
+document.getElementById("m-bulk").onclick      = () => setAppMode("bulk");
+document.getElementById("m-clients").onclick   = () => setAppMode("clients");
+
+// ============================================================================
+// Search mode
+// ============================================================================
+document.getElementById("tab-co").onclick = () => setSearchMode("company");
+document.getElementById("tab-br").onclick = () => setSearchMode("broker");
+
+function setSearchMode(m) {
+  searchMode = m;
+  document.getElementById("tab-co").classList.toggle("active", m === "company");
+  document.getElementById("tab-br").classList.toggle("active", m === "broker");
+  const q = document.getElementById("q");
+  q.placeholder = m === "company"
+    ? "Search company name (e.g. Starbucks)…"
+    : "Search broker name (e.g. AON, Lockton)…";
+  q.value = "";
+  renderFilterBar();
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("detail").innerHTML = '<div class="placeholder">Search and select a result.</div>';
+}
+
+function renderFilterBar() {
+  const fb = document.getElementById("filter-bar");
+  if (searchMode === "company") {
+    fb.innerHTML = `
+      <div><label class="f">State</label><input type="text" id="f-state" maxlength="2" style="text-transform:uppercase" placeholder="CA" /></div>
+      <div><label class="f">Min active</label><input type="number" id="f-min" placeholder="500" /></div>
+      <div><label class="f">Plan year</label>
+        <select id="f-year"><option value="">any</option><option>2024</option><option>2025</option></select>
+      </div>`;
+    fb.querySelectorAll("input,select").forEach(el => el.addEventListener("change", () => doSearch(document.getElementById("q").value.trim())));
+  } else {
+    fb.innerHTML = "";
+  }
+}
+renderFilterBar();
+
+let searchTimer;
+document.getElementById("q").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) { document.getElementById("results").innerHTML = ""; return; }
+  searchTimer = setTimeout(() => doSearch(q), 200);
+});
+
+async function doSearch(q) {
+  lastQuery = q;
+  let url;
+  if (searchMode === "company") {
+    const s = (document.getElementById("f-state")?.value || "").trim().toUpperCase();
+    const m = document.getElementById("f-min")?.value || "";
+    const y = document.getElementById("f-year")?.value || "";
+    const params = new URLSearchParams({ q, limit: 30 });
+    if (s) params.set("state", s);
+    if (m) params.set("min_active", m);
+    if (y) params.set("plan_year", y);
+    url = `/api/companies?${params}`;
+  } else {
+    url = `/api/brokers?q=${encodeURIComponent(q)}&limit=30`;
+  }
+  const r = await fetch(url);
+  const data = await r.json();
+  if (q !== lastQuery) return;
+  renderSearchResults(data.results || []);
+}
+
+function renderSearchResults(rows) {
+  const list = document.getElementById("results");
+  list.innerHTML = "";
+  if (!rows.length) { list.innerHTML = '<div class="placeholder">No matches.</div>'; return; }
+  for (const row of rows) {
+    const div = document.createElement("div");
+    div.className = "result-row";
+    if (searchMode === "company") {
+      div.innerHTML = `
+        <div class="result-name">${escapeHtml(row.sponsor_name)}</div>
+        <div class="result-meta">
+          ${escapeHtml([row.sponsor_city, row.sponsor_state].filter(Boolean).join(", ") || "—")}
+          · EIN ${row.sponsor_ein || "—"}
+          · ${row.filing_count} filings · latest ${row.latest_year}
+          · ${fmtInt(row.max_active)} max active
+        </div>`;
+      div.onclick = () => loadCompany(row.sponsor_ein, div);
+    } else {
+      div.innerHTML = `
+        <div class="result-name">${escapeHtml(row.display_name)}</div>
+        <div class="result-meta">
+          ${fmtInt(row.distinct_filings)} client filings ·
+          ${fmt(row.total_commission)} comm ·
+          ${row.office_count} offices in ${row.state_count} states
+        </div>`;
+      div.onclick = () => loadBroker(row.canonical, row.display_name, div);
+    }
+    list.appendChild(div);
+  }
+}
+
+function highlight(el) {
+  document.querySelectorAll(".result-row.active").forEach(e => e.classList.remove("active"));
+  if (el) el.classList.add("active");
+}
+
+// -- Company detail -----------------------------------------------------------
+async function loadCompany(ein, sourceEl) {
+  highlight(sourceEl);
+  const d = document.getElementById("detail");
+  d.innerHTML = '<div class="placeholder">Loading…</div>';
+  const r = await fetch(`/api/companies/by-ein/${encodeURIComponent(ein)}`);
+  const data = await r.json();
+  renderCompany(data);
+}
+
+function renderCompany(data) {
+  const d = document.getElementById("detail");
+  if (!data.filings || !data.filings.length) {
+    d.innerHTML = '<div class="placeholder">No filings.</div>'; return;
+  }
+
+  let html = `
+    <div class="header-actions">
+      <a class="btn small outline" href="/api/companies/by-ein/${encodeURIComponent(data.ein)}?format=csv">⬇ CSV</a>
+    </div>
+    <h2>${escapeHtml(data.sponsor_name)}</h2>
+    <div class="result-meta">EIN ${data.ein}</div>`;
+
+  if (data.broker_rollup && data.broker_rollup.length) {
+    html += `<div class="rollup" style="margin-top:14px">
+      <h3>Broker rollup (across ${data.filings.length} filings, grouped by canonical name)</h3>
+      <table class="brokers">
+        <tr><th>Broker (canonical)</th><th>Offices</th><th>Years</th><th class="num">Lines</th><th class="num">Commission</th><th class="num">Fees</th></tr>`;
+    for (const b of data.broker_rollup.slice(0, 15)) {
+      const offices = (b.offices || []).slice(0,3).map(o => `${o.city || "?"}, ${o.state || "?"}`).join("; ") + (b.offices.length > 3 ? `; +${b.offices.length-3} more` : "");
+      html += `<tr>
+        <td><strong>${escapeHtml(b.display_name)}</strong>
+          <div class="result-meta">canonical: ${escapeHtml(b.broker_canonical)}</div></td>
+        <td class="result-meta">${escapeHtml(offices)}</td>
+        <td>${b.years.join(", ")}</td>
+        <td class="num">${fmtInt(b.appearances)}</td>
+        <td class="num">${fmt(b.total_commission)}</td>
+        <td class="num">${fmt(b.total_fees)}</td>
+      </tr>`;
+    }
+    html += `</table></div>`;
+  }
+
+  for (const f of data.filings) {
+    html += `<div class="filing">
+      <div class="filing-header">
+        <div class="filing-title">${escapeHtml(f.plan_name || "(no plan name)")}</div>
+        <div class="result-meta">PY ${f.plan_year} · plan #${f.plan_num || "?"} · ${fmtInt(f.participants_active)} active</div>
+      </div>`;
+    if (!f.schedule_a || !f.schedule_a.length) {
+      html += `<div class="result-meta">No Schedule A insurance contracts on this filing.</div>`;
+    } else {
+      for (const sa of f.schedule_a) {
+        html += `<div class="sch-a-line">
+          <div><span class="carrier">${escapeHtml(sa.carrier_name || "(unnamed carrier)")}</span>
+               · contract ${escapeHtml(sa.contract_num || "?")}
+               · ${fmtInt(sa.persons_covered_eoy)} covered
+               · comm ${fmt(sa.broker_comm_total)} · fees ${fmt(sa.broker_fees_total)}</div>
+          <div>${(sa.benefit_types || []).map(b => `<span class="pill ${b.toLowerCase()}">${b}</span>`).join("")}</div>`;
+        if (sa.brokers && sa.brokers.length) {
+          html += `<table class="brokers">
+            <tr><th>Broker</th><th>Office address</th><th class="num">Commission</th><th class="num">Fees</th></tr>`;
+          for (const b of sa.brokers) {
+            html += `<tr>
+              <td><a href="#" onclick="event.preventDefault(); jumpToBroker('${escapeHtml(b.broker_name_canonical||"")}','${escapeHtml(b.broker_name||"").replace(/'/g,"\\'")}')">${escapeHtml(b.broker_name || "—")}</a></td>
+              <td class="result-meta">${escapeHtml(fullAddress(b) || "—")}</td>
+              <td class="num">${fmt(b.broker_comm_paid)}</td>
+              <td class="num">${fmt(b.broker_fees_paid)}</td>
+            </tr>`;
+          }
+          html += `</table>`;
+        }
+        html += `</div>`;
+      }
+    }
+    html += `</div>`;
+  }
+  d.innerHTML = html;
+}
+
+// -- Broker detail ------------------------------------------------------------
+let currentBrokerCanonical = null;
+let currentBrokerDisplay = null;
+
+async function loadBroker(canonical, displayName, sourceEl) {
+  highlight(sourceEl);
+  currentBrokerCanonical = canonical;
+  currentBrokerDisplay = displayName;
+  await renderBrokerView();
+}
+
+async function renderBrokerView(filters = {}) {
+  const d = document.getElementById("detail");
+  d.innerHTML = '<div class="placeholder">Loading…</div>';
+  const params = new URLSearchParams({ canonical: currentBrokerCanonical, limit: 200, ...filters });
+  const r = await fetch(`/api/brokers/clients?${params}`);
+  const data = await r.json();
+
+  let html = `
+    <div class="header-actions">
+      <button class="btn small" onclick="openBrokerMap()">🗺 Map</button>
+      <a class="btn small outline" href="/api/brokers/clients?${params}&format=csv">⬇ CSV</a>
+    </div>
+    <h2>${escapeHtml(currentBrokerDisplay)}</h2>
+    <div class="result-meta">Canonical: ${escapeHtml(currentBrokerCanonical)} · ${data.results.length} contract lines shown</div>
+
+    <div class="filter-row" style="margin-top:14px">
+      <div><label class="f">Sponsor state</label><input type="text" id="bf-state" maxlength="2" style="text-transform:uppercase" /></div>
+      <div><label class="f">Plan year</label>
+        <select id="bf-year"><option value="">any</option><option>2024</option><option>2025</option></select>
+      </div>
+      <div><label class="f">Min lives</label><input type="number" id="bf-lives" placeholder="500" /></div>
+      <div><label class="f">Coverage</label>
+        <select id="bf-bnft">
+          <option value="">any</option>
+          <option value="health">Health</option>
+          <option value="dental">Dental</option>
+          <option value="vision">Vision</option>
+          <option value="life">Life</option>
+          <option value="disability">Disability</option>
+          <option value="rx">Rx</option>
+          <option value="stop_loss">Stop-loss</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:end"><button class="btn small" onclick="applyBrokerFilters()">Apply</button></div>
+    </div>
+
+    <table class="data" style="margin-top:10px">
+      <thead><tr>
+        <th>Sponsor</th><th>State</th><th>Year</th><th>Carrier</th><th>Contract</th>
+        <th class="num">Lives</th><th>Coverage</th><th>Office</th><th class="num">Commission</th>
+      </tr></thead><tbody>`;
+  for (const c of data.results) {
+    html += `<tr>
+      <td><a href="#" onclick="event.preventDefault(); jumpToCompany('${c.sponsor_ein}')">${escapeHtml(c.sponsor_name)}</a></td>
+      <td>${escapeHtml(c.sponsor_state || "—")}</td>
+      <td>${c.plan_year}</td>
+      <td>${escapeHtml(c.carrier_name || "—")}</td>
+      <td>${escapeHtml(c.contract_num || "—")}</td>
+      <td class="num">${fmtInt(c.persons_covered_eoy)}</td>
+      <td>${(c.benefit_types || []).join(", ") || "—"}</td>
+      <td class="result-meta">${escapeHtml([c.broker_city, c.broker_state].filter(Boolean).join(", "))}</td>
+      <td class="num">${fmt(c.broker_comm_paid)}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  d.innerHTML = html;
+  // restore filters
+  if (filters.state) document.getElementById("bf-state").value = filters.state;
+  if (filters.plan_year) document.getElementById("bf-year").value = filters.plan_year;
+  if (filters.min_lives) document.getElementById("bf-lives").value = filters.min_lives;
+  if (filters.benefit) document.getElementById("bf-bnft").value = filters.benefit;
+}
+
+function applyBrokerFilters() {
+  const f = {};
+  const s = document.getElementById("bf-state").value.trim().toUpperCase();
+  const y = document.getElementById("bf-year").value;
+  const l = document.getElementById("bf-lives").value;
+  const b = document.getElementById("bf-bnft").value;
+  if (s) f.state = s;
+  if (y) f.plan_year = y;
+  if (l) f.min_lives = l;
+  if (b) f.benefit = b;
+  renderBrokerView(f);
+}
+
+async function jumpToCompany(ein) {
+  setAppMode("search");
+  setSearchMode("company");
+  await loadCompany(ein, null);
+}
+async function jumpToBroker(canonical, displayName) {
+  if (!canonical) return;
+  setAppMode("search");
+  setSearchMode("broker");
+  document.getElementById("q").value = displayName || canonical;
+  await loadBroker(canonical, displayName || canonical, null);
+}
+
+// ============================================================================
+// Switchers
+// ============================================================================
+async function loadSwitchers() {
+  const out = document.getElementById("switchers-out");
+  out.innerHTML = '<div class="placeholder">Loading…</div>';
+  const params = new URLSearchParams({ limit: 200 });
+  const s = document.getElementById("sw-state").value.trim().toUpperCase();
+  const m = document.getElementById("sw-min").value;
+  if (s) params.set("state", s);
+  if (m) params.set("min_lives", m);
+  const r = await fetch(`/api/brokers/switchers?${params}`);
+  const data = await r.json();
+  if (!data.results.length) { out.innerHTML = '<div class="placeholder">No broker switches found with those filters.</div>'; return; }
+  let html = `<div class="result-meta" style="margin-bottom:10px">${data.results.length} sponsors switched primary broker between years.</div>
+    <table class="data"><thead><tr>
+      <th>Sponsor</th><th>State</th><th class="num">Active</th>
+      <th>From (PY ${data.results[0].year_a})</th><th>→ To (PY ${data.results[0].year_b})</th>
+    </tr></thead><tbody>`;
+  for (const r of data.results) {
+    html += `<tr>
+      <td><a href="#" onclick="event.preventDefault(); jumpToCompany('${r.sponsor_ein}')">${escapeHtml(r.sponsor_name)}</a></td>
+      <td>${escapeHtml(r.sponsor_state || "—")}</td>
+      <td class="num">${fmtInt(r.participants_active)}</td>
+      <td>${escapeHtml(r.broker_a)}</td>
+      <td><strong>${escapeHtml(r.broker_b)}</strong></td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  out.innerHTML = html;
+}
+function exportSwitchers() {
+  const params = new URLSearchParams({ limit: 1000, format: "csv" });
+  const s = document.getElementById("sw-state").value.trim().toUpperCase();
+  const m = document.getElementById("sw-min").value;
+  if (s) params.set("state", s);
+  if (m) params.set("min_lives", m);
+  window.location.href = `/api/brokers/switchers?${params}`;
+}
+
+// ============================================================================
+// Bulk lookup
+// ============================================================================
+async function runBulk() {
+  const txt = document.getElementById("bulk-input").value;
+  const items = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const out = document.getElementById("bulk-out");
+  if (!items.length) { out.innerHTML = '<div class="placeholder">Add at least one line.</div>'; return; }
+  out.innerHTML = `<div class="placeholder">Looking up ${items.length} entries…</div>`;
+  const r = await fetch("/api/lookup/bulk", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  const data = await r.json();
+  bulkLastResults = data.results;
+  document.getElementById("bulk-csv").disabled = false;
+  let html = `<div class="result-meta" style="margin-bottom:8px">${data.results.length} results</div>
+    <table class="data"><thead><tr>
+      <th>Input</th><th>Match</th><th>Sponsor</th><th>State</th><th>EIN</th>
+      <th class="num">Active</th><th>Year</th><th>Primary broker</th><th class="num">Comm</th>
+    </tr></thead><tbody>`;
+  for (const r of data.results) {
+    if (r.match_type === "none" || r.match_type === "empty") {
+      html += `<tr><td>${escapeHtml(r.input)}</td><td colspan="8"><em class="result-meta">no match</em></td></tr>`;
+      continue;
+    }
+    html += `<tr>
+      <td>${escapeHtml(r.input)}</td>
+      <td><span class="pill">${r.match_type}</span></td>
+      <td><a href="#" onclick="event.preventDefault(); jumpToCompany('${r.sponsor_ein}')">${escapeHtml(r.sponsor_name || "")}</a></td>
+      <td>${escapeHtml(r.sponsor_state || "—")}</td>
+      <td>${r.sponsor_ein}</td>
+      <td class="num">${fmtInt(r.participants_active)}</td>
+      <td>${r.latest_plan_year || "—"}</td>
+      <td>${escapeHtml(r.primary_broker_display || "—")}</td>
+      <td class="num">${fmt(r.primary_broker_commission)}</td>
+    </tr>`;
+  }
+  html += `</tbody></table>`;
+  out.innerHTML = html;
+}
+
+function exportBulk() {
+  // Re-submit, fetch CSV
+  const txt = document.getElementById("bulk-input").value;
+  const items = txt.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  fetch("/api/lookup/bulk?format=csv", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  })
+  .then(r => r.blob())
+  .then(b => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "bulk_lookup.csv";
+    a.click();
+  });
+}
+
+// ============================================================================
+// Map: Big clients (>10k participants by default)
+// ============================================================================
+async function loadClientsMap() {
+  const svg = d3.select("#clients-map");
+  svg.selectAll("*").remove();
+  const info = document.getElementById("clients-info");
+  info.textContent = "Loading…";
+
+  const min = document.getElementById("cm-min").value || 10000;
+  const yr = document.getElementById("cm-year").value;
+  const params = new URLSearchParams({ min_active: min });
+  if (yr) params.set("plan_year", yr);
+
+  const [topo, dataResp] = await Promise.all([loadUsTopo(), fetch(`/api/clients/large-map?${params}`).then(r => r.json())]);
+  const data = dataResp.results;
+  drawBaseMap(svg, topo);
+
+  const projection = d3.geoAlbersUsa().scale(1280).translate([480, 305]);
+  // Size dot by sqrt of participants
+  const maxP = d3.max(data, d => d.participants_active) || 1;
+  const radius = d3.scaleSqrt().domain([0, maxP]).range([2, 14]);
+
+  const tooltip = document.getElementById("clients-tooltip");
+  const wrap = svg.node().parentNode;
+
+  svg.append("g").selectAll("circle")
+    .data(data.filter(d => d.lat && d.lon))
+    .join("circle")
+      .attr("class", "client-dot")
+      .attr("cx", d => { const p = projection([d.lon, d.lat]); return p ? p[0] : -100; })
+      .attr("cy", d => { const p = projection([d.lon, d.lat]); return p ? p[1] : -100; })
+      .attr("r", d => radius(d.participants_active))
+      .on("mousemove", (e, d) => {
+        const rect = wrap.getBoundingClientRect();
+        tooltip.style.display = "block";
+        tooltip.style.left = (e.clientX - rect.left) + "px";
+        tooltip.style.top = (e.clientY - rect.top) + "px";
+        tooltip.textContent = `${d.sponsor_name}\n${d.sponsor_city || ""}, ${d.sponsor_state} · PY ${d.plan_year}\n${fmtInt(d.participants_active)} active participants\nBroker: ${d.primary_broker_canonical || "—"}`;
+      })
+      .on("mouseleave", () => { tooltip.style.display = "none"; })
+      .on("click", (e, d) => jumpToCompany(d.sponsor_ein));
+
+  info.innerHTML = `${data.length.toLocaleString()} sponsors with ≥ ${(+min).toLocaleString()} active participants. Largest: <strong>${data[0]?.sponsor_name || "—"}</strong> (${fmtInt(data[0]?.participants_active)})`;
+}
+
+// ============================================================================
+// Broker map (modal): choropleth + office dots
+// ============================================================================
+async function openBrokerMap() {
+  if (!currentBrokerCanonical) return;
+  document.getElementById("broker-map-modal").style.display = "flex";
+  document.getElementById("bmm-title").textContent = currentBrokerDisplay || currentBrokerCanonical;
+  document.getElementById("bmm-summary").textContent = "Loading map…";
+
+  const [topo, mapResp] = await Promise.all([
+    loadUsTopo(),
+    fetch(`/api/brokers/map?canonical=${encodeURIComponent(currentBrokerCanonical)}`).then(r => r.json()),
+  ]);
+
+  const svg = d3.select("#broker-map");
+  svg.selectAll("*").remove();
+  const projection = d3.geoAlbersUsa().scale(1280).translate([480, 305]);
+  const path = d3.geoPath(projection);
+  const states = topojson.feature(topo, topo.objects.states).features;
+
+  const counts = mapResp.clients_by_state || {};
+  const maxClients = Math.max(1, ...Object.values(counts));
+  // sqrt scale gives long-tail data more visual differentiation; HSL interpolation
+  // through a saturated mid-color avoids the muddy gray-greens of pure RGB lerps.
+  const color = d3.scaleSqrt()
+    .domain([0, maxClients])
+    .range(["#eef2f3", "#0b6e3f"])
+    .interpolate(d3.interpolateHcl);
+
+  const tooltip = document.getElementById("broker-tooltip");
+  const wrap = svg.node().parentNode;
+
+  // Choropleth
+  svg.append("g").selectAll("path")
+    .data(states).join("path")
+    .attr("class", "state")
+    .attr("d", path)
+    .attr("fill", d => color(counts[stateNameToAbbr[d.id.padStart(2,"0")]] || 0))
+    .on("mousemove", (e, d) => {
+      const abbr = stateNameToAbbr[d.id.padStart(2,"0")];
+      const c = counts[abbr] || 0;
+      const rect = wrap.getBoundingClientRect();
+      tooltip.style.display = "block";
+      tooltip.style.left = (e.clientX - rect.left) + "px";
+      tooltip.style.top = (e.clientY - rect.top) + "px";
+      tooltip.textContent = `${d.properties.name}\n${c} client filings`;
+    })
+    .on("mouseleave", () => tooltip.style.display = "none");
+
+  // Office dots
+  const offices = mapResp.offices || [];
+  const maxOffice = Math.max(1, ...offices.map(o => o.n));
+  const r = d3.scaleSqrt().domain([0, maxOffice]).range([2, 16]);
+  svg.append("g").selectAll("circle")
+    .data(offices).join("circle")
+    .attr("class", "office-dot")
+    .attr("cx", d => { const p = projection([d.lon, d.lat]); return p ? p[0] : -100; })
+    .attr("cy", d => { const p = projection([d.lon, d.lat]); return p ? p[1] : -100; })
+    .attr("r", d => r(d.n))
+    .on("mousemove", (e, d) => {
+      const rect = wrap.getBoundingClientRect();
+      tooltip.style.display = "block";
+      tooltip.style.left = (e.clientX - rect.left) + "px";
+      tooltip.style.top = (e.clientY - rect.top) + "px";
+      tooltip.textContent = `${d.city}, ${d.state} ${d.zip}\n${d.n} contract lines from this office`;
+    })
+    .on("mouseleave", () => tooltip.style.display = "none");
+
+  document.getElementById("bmm-summary").textContent = `${offices.length} offices · ${Object.keys(counts).length} client states · top state: ${Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0] || "—"} (${maxClients} clients)`;
+  document.getElementById("bmm-max").textContent = `${maxClients} clients`;
+}
+function closeBrokerMap() { document.getElementById("broker-map-modal").style.display = "none"; }
+
+// ============================================================================
+// Shared base map drawer (for clients map — choropleth-less)
+// ============================================================================
+function drawBaseMap(svg, topo) {
+  const projection = d3.geoAlbersUsa().scale(1280).translate([480, 305]);
+  const path = d3.geoPath(projection);
+  const states = topojson.feature(topo, topo.objects.states).features;
+  svg.append("g").selectAll("path")
+    .data(states).join("path")
+    .attr("class", "state")
+    .attr("d", path);
+}
+
+// ============================================================================
+// Disclaimer
+// ============================================================================
+async function loadDisclaimer() {
+  const r = await fetch("/api/meta");
+  const m = await r.json();
+  const yearTxt = m.filings_by_year.map(y => `${y.plan_year}: ${y.filings.toLocaleString()} filings (${y.with_sch_a.toLocaleString()} with Schedule A)`).join(" · ");
+  document.getElementById("disclaimer").innerHTML = `
+    <strong>About this data —</strong> ${escapeHtml(m.source_note)}
+    Plan years currently loaded: ${m.data_years.join(", ")}.
+    ${yearTxt}.
+    Most recent filing received: <strong>${m.latest_filing_date_received || "—"}</strong>.
+    ${m.distinct_canonical_brokers.toLocaleString()} distinct brokers indexed (after canonicalization).
+    Data is read-only and refreshed by re-running the local ingest job.`;
+}
+loadDisclaimer();
+</script>
+</body>
+</html>

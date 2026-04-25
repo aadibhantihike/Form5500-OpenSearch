@@ -1,0 +1,27 @@
+name: Refresh DOL data
+
+# Runs ingest on the Fly machine once a month and on manual dispatch.
+# DOL/EBSA refreshes Form 5500 datasets monthly, usually mid-month.
+on:
+  schedule:
+    - cron: "0 9 15 * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run ingest on Fly machine
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # Re-build the SQLite DB in place. Atomic-ish: ingest.py writes to
+          # data/efast.db (i.e. /data/efast.db on the volume) by DROP+CREATE
+          # within a single sqlite connection. There is a brief window where
+          # queries against in-flight tables will fail; tighten with a
+          # lockfile or blue/green if traffic warrants it.
+          flyctl ssh console -C "python /app/ingest.py" --app efast-broker-search

@@ -1,0 +1,15 @@
+.venv/
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+api.py
+ingest.py
+schema.sql
+requirements.txt
+Dockerfile
+.dockerignore
+entrypoint.sh
+fly.toml
+.github/
