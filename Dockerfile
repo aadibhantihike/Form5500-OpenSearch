@@ -14,7 +14,7 @@ RUN apt-get update \
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY api.py ingest.py schema.sql ./
+COPY api.py ingest.py plan_codes.py schema.sql ./
 COPY public ./public
 
 COPY entrypoint.sh /entrypoint.sh
