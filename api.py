@@ -25,6 +25,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
+import plan_codes
+
 ROOT = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("EFAST_DB_PATH", ROOT / "data" / "efast.db"))
 STATIC_DIR = ROOT / "public"
@@ -148,6 +150,15 @@ def csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 @limiter.exempt
 def healthz(request: Request):
     return {"ok": True, "db_present": DB_PATH.exists()}
+
+
+# ---------- glossary ----------
+
+@app.get("/api/glossary")
+def get_glossary():
+    """Code → human label + tooltip text. Frontend caches this once and
+    uses it to render any 5500 plan code in plain English."""
+    return plan_codes.glossary()
 
 
 # ---------- meta ----------
@@ -274,6 +285,7 @@ def company_by_ein(ein: str, format: str = Query("json", pattern="^(json|csv)$")
         for f in filings:
             d = dict(f)
             d["schedule_a"] = sch_a_by_filing.get(f["ack_id"], [])
+            d["plan_profile"] = plan_codes.plan_profile(d, d["schedule_a"])
             result_filings.append(d)
 
     # Canonical-grouped broker rollup. Display name = the most-frequent raw spelling

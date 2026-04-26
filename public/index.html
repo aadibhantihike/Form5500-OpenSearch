@@ -103,6 +103,34 @@
     display: inline-block; padding: 1px 8px; border-radius: 99px;
     font-size: 11px; background: #fef3c7; color: #92400e; font-weight: 500;
   }
+
+  /* Plan profile card on each filing */
+  .plan-profile { background: #f7faf8; border: 1px solid #e3eee8; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+  .plan-profile .summary { color: var(--fg); margin-bottom: 6px; line-height: 1.45; }
+  .plan-profile .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+  .plan-profile .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
+
+  /* Funding-type pill: distinct color per category */
+  .funding { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  .funding.self-funded { background: #fee2e2; color: #991b1b; }
+  .funding.fully-insured { background: var(--accent-soft); color: var(--accent); }
+  .funding.likely-self-funded { background: #fef3c7; color: #92400e; }
+  .funding.na { background: #f3f4f6; color: #6b7280; }
+
+  /* Coverage chips: green = present, red dashed = gap */
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; }
+  .chip.present { background: var(--accent-soft); color: var(--accent); }
+  .chip.gap { background: #fef2f2; color: #991b1b; border: 1px dashed #fca5a5; }
+  .chip.neutral { background: var(--pill); color: var(--pill-fg); }
+
+  /* Hover tooltip — pure CSS, no JS, no external lib */
+  .term { border-bottom: 1px dotted var(--muted); cursor: help; position: relative; }
+  .term:hover::after, .term:focus::after {
+    content: attr(data-tip); position: absolute; left: 0; top: 100%; margin-top: 4px;
+    background: rgba(20,20,20,0.95); color: white; padding: 6px 10px; border-radius: 4px;
+    font-size: 12px; line-height: 1.4; white-space: normal; max-width: 300px; min-width: 180px;
+    z-index: 100; pointer-events: none; font-weight: 400; text-transform: none; letter-spacing: 0;
+  }
 </style>
 </head>
 <body>
@@ -419,7 +447,8 @@ function renderCompany(data) {
       <div class="filing-header">
         <div class="filing-title">${escapeHtml(f.plan_name || "(no plan name)")}</div>
         <div class="result-meta">PY ${f.plan_year} · plan #${f.plan_num || "?"} · ${fmtInt(f.participants_active)} active</div>
-      </div>`;
+      </div>
+      ${planProfileHtml(f.plan_profile)}`;
     if (!f.schedule_a || !f.schedule_a.length) {
       html += `<div class="result-meta">No Schedule A insurance contracts on this filing.</div>`;
     } else {
@@ -800,6 +829,66 @@ async function loadDisclaimer() {
     Data is read-only and refreshed by re-running the local ingest job.`;
 }
 loadDisclaimer();
+
+// -- Glossary cache (for tooltips) -------------------------------------------
+let GLOSSARY = { pension: {}, welfare: {}, funding_types: {} };
+async function loadGlossary() {
+  try {
+    const r = await fetch("/api/glossary");
+    if (r.ok) GLOSSARY = await r.json();
+  } catch (e) { /* tooltips are best-effort; UI degrades gracefully */ }
+}
+loadGlossary();
+
+// CSS-only tooltip wrapper — annotates a label with its tooltip text.
+function term(label, tip) {
+  if (!tip) return escapeHtml(label);
+  return `<span class="term" data-tip="${escapeHtml(tip)}">${escapeHtml(label)}</span>`;
+}
+
+function fundingClass(t) {
+  return (t || "").toLowerCase().replace(/[^a-z]+/g, "-");
+}
+
+// Build the plan profile card markup for one filing.
+function planProfileHtml(p) {
+  if (!p) return "";
+  const fundingTip = (GLOSSARY.funding_types || {})[p.funding_type] || "";
+  const welfareLookup = GLOSSARY.welfare || {};
+  // Reverse-lookup label → tooltip via the glossary entries.
+  const tipFor = (label) => {
+    for (const code in welfareLookup) {
+      if (welfareLookup[code].label === label) return welfareLookup[code].tooltip;
+    }
+    return "";
+  };
+  const presentChips = (p.welfare_types || []).map(
+    t => `<span class="chip present">${term(t, tipFor(t))}</span>`
+  ).join(" ");
+  const gapChips = (p.coverage_gaps || []).map(
+    t => `<span class="chip gap">No ${term(t, tipFor(t))}</span>`
+  ).join(" ");
+  const pensionChips = (p.pension_types || []).map(
+    t => `<span class="chip neutral">${escapeHtml(t)}</span>`
+  ).join(" ");
+
+  let html = `<div class="plan-profile">
+    <div class="summary">${escapeHtml(p.summary || "")}</div>`;
+  if (p.funding_type && p.funding_type !== "n/a") {
+    html += `<div class="row">
+      <span class="label">Funding</span>
+      <span class="funding ${fundingClass(p.funding_type)}">${term(p.funding_type, fundingTip)}</span>
+    </div>`;
+  }
+  if (presentChips || gapChips) {
+    html += `<div class="row"><span class="label">Welfare</span>${presentChips}${gapChips}</div>`;
+  }
+  if (pensionChips) {
+    html += `<div class="row"><span class="label">Retirement</span>${pensionChips}</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
 </script>
 </body>
 </html>
